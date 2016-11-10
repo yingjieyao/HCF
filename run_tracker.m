@@ -11,7 +11,7 @@
 function [precision, fps] = run_tracker(video, show_visualization, show_plots)
 
 %path to the videos (you'll be able to choose one with the GUI).
-base_path   = './data';
+base_path   = 'E:/dataset/VTB100';
 
 % Default settings
 if nargin < 1, video = 'choose'; end
@@ -28,7 +28,7 @@ interp_factor = 0.01;       % Model learning rate (see Eqn 6a, 6b)
 cell_size = 4;              % Spatial cell size
 
 global enableGPU;
-enableGPU = false;
+enableGPU = true;
 
 switch video
     case 'choose',

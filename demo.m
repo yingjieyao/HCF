@@ -19,6 +19,7 @@ vl_setupnn();
 
 % Note that the default setting does not enable GPU
 % TO ENABLE GPU, recompile the MatConvNet toolbox  
-vl_compilenn();
+% vl_compilenn();
+vl_compilenn('enableGpu', true, 'cudaRoot', 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0', 'cudaMethod', 'nvcc');
 
-run_tracker('MotorRolling', 1, 1);
+% run_tracker('MotorRolling', 1, 1);
