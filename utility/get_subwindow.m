@@ -1,4 +1,4 @@
-function out = get_subwindow(im, pos, sz)
+function resized_patch = get_subwindow(im, pos, sz, resize_target)
 %GET_SUBWINDOW Obtain sub-window from image, with replication-padding.
 %   Returns sub-window of image IM centered at POS ([y, x] coordinates),
 %   with size SZ ([height, width]). If any pixels are outside of the image,
@@ -19,8 +19,13 @@ xs = clamp(xs, 1, size(im,2));
 ys = clamp(ys, 1, size(im,1));
 
 %extract image
-out = im(ys, xs, :);
+im_patch = im(ys, xs, :);
 
+if isempty(resize_target)
+    resized_patch = im_patch;
+else
+    resized_patch = imResample(im_patch, resize_target);
+end
 end
 
 function y = clamp(x, lb, ub)

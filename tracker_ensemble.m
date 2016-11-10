@@ -43,6 +43,8 @@ numLayers = length(indLayers);
 im_sz     = size(imread([video_path img_files{1}]));
 window_sz = get_search_window(target_sz, im_sz, padding);
 
+base_target_sz = target_sz;
+
 % Compute the sigma for the Gaussian function label
 output_sigma = sqrt(prod(target_sz)) * output_sigma_factor / cell_size;
 
@@ -64,13 +66,25 @@ end
 
 % Initialize variables for calculating FPS and distance precision
 time      = 0;
-positions = zeros(numel(img_files), 2);
+positions = zeros(numel(img_files), 4);
 nweights  = reshape(nweights,1,1,[]);
 
 % Note: variables ending with 'f' are in the Fourier domain.
 model_xf     = cell(1, numLayers);
 model_alphaf = cell(1, numLayers);
+%% Yogurt, multi scale HCF
+multi_scale = 1;
+currentScaleFactor = 1;
 
+if multi_scale
+    scale_step = 1.02;
+    nScales = 7;
+    ss = 1 : nScales;
+    scaleFactors = scale_step .^(ceil(nScales/2) - ss);
+    im = imread([video_path img_files{1}]); % Load the image at the first frame
+    min_scale_factor = scale_step ^ ceil(log(max(5 ./ window_sz)) / log(scale_step));
+    max_scale_factor = scale_step ^ floor(log(min([size(im,1) size(im,2)] ./ base_target_sz)) / log(scale_step));
+end
 % ================================================================================
 % Start tracking
 % ================================================================================
@@ -86,17 +100,42 @@ for frame = 1:numel(img_files),
     % ================================================================================
     if frame > 1
         % Extracting hierarchical convolutional features
-        feat = extractFeature(im, pos, window_sz, cos_window, indLayers);
-        % Predict position
-        pos  = predictPosition(feat, pos, indLayers, nweights, cell_size, l1_patch_num, ...
-            model_xf, model_alphaf);
+        old_pos = pos;
+        max_response = zeros(nScales, 1);
+        ret_pos = zeros(nScales, 2);
+        if multi_scale
+            for scale_ind = 1 : nScales
+                feat = extractFeature(im, old_pos, window_sz, cos_window, indLayers, round(window_sz * currentScaleFactor * scaleFactors(scale_ind)));
+                % Predict position
+                [ret_pos(scale_ind, :), max_response(scale_ind)]  = predictPosition(feat, old_pos, indLayers, nweights, cell_size, l1_patch_num, ...
+                    model_xf, model_alphaf);
+            end
+            [~, sind] = max(max_response);
+            pos = ret_pos(sind, :);
+            currentScaleFactor = currentScaleFactor * scaleFactors(sind);
+            if currentScaleFactor < min_scale_factor
+                currentScaleFactor = min_scale_factor;
+            elseif currentScaleFactor > max_scale_factor
+                currentScaleFactor = max_scale_factor;
+            end
+        else
+            feat = extractFeature(im, old_pos, window_sz, cos_window, indLayers, window_sz);
+            % Predict position
+            [pos, ~]  = predictPosition(feat, old_pos, indLayers, nweights, cell_size, l1_patch_num, ...
+                model_xf, model_alphaf);
+        end
+
     end
     
     % ================================================================================
     % Learning correlation filters over hierarchical convolutional features
     % ================================================================================
     % Extracting hierarchical convolutional features
-    feat  = extractFeature(im, pos, window_sz, cos_window, indLayers);
+    if multi_scale
+        feat  = extractFeature(im, pos, window_sz, cos_window, indLayers, round(window_sz * currentScaleFactor));
+    else
+        feat = extractFeature(im, pos, window_sz, cos_window, indLayers, window_sz);
+    end
     % Model update
     [model_xf, model_alphaf] = updateModel(feat, yf, interp_factor, lambda, frame, ...
         model_xf, model_alphaf);
@@ -104,7 +143,9 @@ for frame = 1:numel(img_files),
     % ================================================================================
     % Save predicted position and timing
     % ================================================================================
-    positions(frame,:) = pos;
+    target_sz = floor(base_target_sz * currentScaleFactor);
+    
+    positions(frame,:) = [pos([2,1]) - floor(target_sz([2,1]) /2), target_sz([2,1])];
     time = time + toc();
     
     % Visualization
@@ -120,7 +161,7 @@ end
 end
 
 
-function pos = predictPosition(feat, pos, indLayers, nweights, cell_size, l1_patch_num, ...
+function [pos, max_response] = predictPosition(feat, pos, indLayers, nweights, cell_size, l1_patch_num, ...
     model_xf, model_alphaf)
 
 % ================================================================================
@@ -148,7 +189,7 @@ response = sum(bsxfun(@times, res_layer, nweights), 3);
 [vert_delta, horiz_delta] = find(response == max(response(:)), 1);
 vert_delta  = vert_delta  - floor(size(zf,1)/2);
 horiz_delta = horiz_delta - floor(size(zf,2)/2);
-
+max_response = max(response(:));
 % Map the position to the image space
 pos = pos + cell_size * [vert_delta - 1, horiz_delta - 1];
 
@@ -193,10 +234,10 @@ end
 
 end
 
-function feat  = extractFeature(im, pos, window_sz, cos_window, indLayers)
+function feat  = extractFeature(im, pos, window_sz, cos_window, indLayers, need_size)
 
 % Get the search window from previous detection
-patch = get_subwindow(im, pos, window_sz);
+patch = get_subwindow(im, pos, need_size, window_sz);
 % Extracting hierarchical convolutional features
 feat  = get_features(patch, cos_window, indLayers);
 

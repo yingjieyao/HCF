@@ -28,7 +28,7 @@ interp_factor = 0.01;       % Model learning rate (see Eqn 6a, 6b)
 cell_size = 4;              % Spatial cell size
 
 global enableGPU;
-enableGPU = true;
+enableGPU = false;
 
 switch video
     case 'choose',
@@ -101,7 +101,8 @@ switch video
         precisions = precision_plot(positions, ground_truth, video, show_plots);
         fps = numel(img_files) / time;
         
-        fprintf('%12s - Precision (20px):% 1.3f, FPS:% 4.2f\n', video, precisions(20), fps)
+        fprintf('%12s - Precision (20px):% 1.3f, FPS:% 4.2f, mean OP: %1.3f\n', video, precisions(20), ...
+            fps, mean(calcRectInt(ground_truth, positions)));
         
         if nargout > 0,
             %return precisions at a 20 pixels threshold
